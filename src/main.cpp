@@ -69,6 +69,11 @@ static void cmd_transfer(void)
 
 static void cmd_play(void)
 {
+    bool playing = false;
+    if (spotify_client_is_playing(&playing) == ESP_OK && playing) {
+        printf("Already playing.\n");
+        return;
+    }
     const char *id = spotify_device_get_id();
     int st = 0;
     spotify_client_play(id, NULL, &st);

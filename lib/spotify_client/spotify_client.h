@@ -23,6 +23,12 @@ esp_err_t spotify_client_get_devices(char *buf, size_t buf_size, int *status_cod
 esp_err_t spotify_client_get_state(char *buf, size_t buf_size, int *status_code);
 
 /**
+ * @brief Check if playback is currently active.
+ * @param is_playing Output: true if playing, false if paused/stopped
+ */
+esp_err_t spotify_client_is_playing(bool *is_playing);
+
+/**
  * @brief Transfer playback to a device.
  */
 esp_err_t spotify_client_transfer_playback(const char *device_id, bool play, int *status_code);

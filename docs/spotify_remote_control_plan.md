@@ -233,6 +233,8 @@ build_spiffs.py         # PlatformIO 预构建脚本（打包 data/www/ → stor
 2. **JSON 空格兼容**：Spotify API 返回的 JSON 在冒号两侧有空格（`"type" : "Smartphone"`），设备发现搜索 `"type":"Smartphone"` 匹配不到。改为直接搜索 `"Smartphone"` 并向前提取 `"id"` 值，跳过空格/冒号。
 3. **看门狗超时**：`getchar()` 阻塞导致 IDLE 任务饿死。用 `fcntl(O_NONBLOCK)` 设非阻塞 + `vTaskDelay(50ms)` 让出 CPU。
 4. **esp_http_client content_type**：ESP-IDF 6.0 的 `esp_http_client_config_t` 无 `content_type` 字段，需在 init 后用 `esp_http_client_set_header()` 设置。
+5. **Play 重复调用 403**：Spotify API 在设备已在播放时再次 `PUT /me/player/play`（无 body）返回 403 `Restriction violated / UNKNOWN`。修复：`p` 命令先查 `spotify_client_is_playing()`，已播放则提示 "Already playing" 不重复调用。暂停后播放正常（HTTP 200）。
+6. **错误响应体未打印**：`spotify_request` 在调用方未提供 buffer 时无法看到错误详情。修复：内部 fallback buffer 总是捕获响应体，便于诊断 4xx/5xx。
 
 ---
 
@@ -334,3 +336,4 @@ iPhone Spotify App 的设备属性返回 `supports_volume: false`，调用 `PUT 
 | 2026-08-15 | 初版方案，确认 Premium + 基础控制 + 播放指定内容 + 状态显示 + 电脑辅助授权 + 按键+OLED |
 | 2026-08-15 | 完成 API 验证：转移/播放/暂停/上下首/状态均通过；发现 iPhone 不支持 API 音量控制（supports_volume=false），方案移除音量功能 |
 | 2026-08-15 | 完成 ESP32 固件阶段 1-4/6/7/8.1-8.3：WiFi 配网(NVS+AP)、SNTP 同步、Spotify auth(client_id+refresh_token→NVS)、HTTPS Player 端点封装、设备发现、串口交互命令。全链路验证通过（发现 iPhone→转移→播放→暂停） |
+| 2026-08-15 | 修复：play 在已播放时返回 403 Restriction violated → `p` 命令先查 is_playing，避免重复调用；spotify_request 增加 fallback buffer 打印错误详情 |

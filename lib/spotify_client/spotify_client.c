@@ -50,8 +50,16 @@ static esp_err_t spotify_request(
     char url[512];
     snprintf(url, sizeof(url), "%s%s", SPOTIFY_API_BASE, path);
 
-    resp_buf_t rb = { .buf = resp_buf, .buf_size = resp_buf_size, .data_len = 0 };
-    if (resp_buf) resp_buf[0] = '\0';
+    char fallback_buf[256];
+    char *eff_buf = resp_buf;
+    size_t eff_size = resp_buf_size;
+    if (!eff_buf) {
+        eff_buf = fallback_buf;
+        eff_size = sizeof(fallback_buf);
+    }
+
+    resp_buf_t rb = { .buf = eff_buf, .buf_size = eff_size, .data_len = 0 };
+    eff_buf[0] = '\0';
 
     esp_http_client_config_t config = {
         .url = url,
@@ -80,7 +88,7 @@ static esp_err_t spotify_request(
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Request failed: %s, err=%s", path, esp_err_to_name(err));
     } else if (status >= 400) {
-        ESP_LOGW(TAG, "%s -> HTTP %d: %s", path, status, resp_buf ? resp_buf : "(no body)");
+        ESP_LOGW(TAG, "%s -> HTTP %d: %s", path, status, eff_buf);
     } else {
         ESP_LOGI(TAG, "%s -> HTTP %d", path, status);
     }
@@ -97,6 +105,29 @@ esp_err_t spotify_client_get_devices(char *buf, size_t buf_size, int *status_cod
 esp_err_t spotify_client_get_state(char *buf, size_t buf_size, int *status_code)
 {
     return spotify_request(HTTP_METHOD_GET, "/me/player", NULL, buf, buf_size, status_code);
+}
+
+esp_err_t spotify_client_is_playing(bool *is_playing)
+{
+    char buf[2048];
+    int status = 0;
+    esp_err_t err = spotify_client_get_state(buf, sizeof(buf), &status);
+    if (err != ESP_OK) return err;
+    if (status == 204) {
+        *is_playing = false;
+        return ESP_OK;
+    }
+    if (status != 200) return ESP_FAIL;
+
+    const char *key = "\"is_playing\"";
+    const char *p = strstr(buf, key);
+    if (!p) return ESP_FAIL;
+    p += strlen(key);
+    while (*p == ' ' || *p == '\t' || *p == '\n') p++;
+    if (*p == ':') p++;
+    while (*p == ' ' || *p == '\t' || *p == '\n') p++;
+    *is_playing = (strncmp(p, "true", 4) == 0);
+    return ESP_OK;
 }
 
 esp_err_t spotify_client_transfer_playback(const char *device_id, bool play, int *status_code)
