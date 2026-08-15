@@ -22,8 +22,7 @@ static void print_help(void)
     printf("  s  - Show playback state\n");
     printf("  f  - Find iPhone\n");
     printf("  t  - Transfer playback to iPhone\n");
-    printf("  p  - Play / Resume\n");
-    printf("  SPC- Pause\n");
+    printf("  SPC- Play / Pause (toggle)\n");
     printf("  n  - Next track\n");
     printf("  b  - Previous track\n");
     printf("  h  - Help\n\n");
@@ -67,25 +66,25 @@ static void cmd_transfer(void)
     printf("Transfer: HTTP %d\n", st);
 }
 
-static void cmd_play(void)
+static void cmd_toggle(void)
 {
+    const char *id = spotify_device_get_id();
+    if (!id) { printf("No device. Press 'f' first.\n"); return; }
+
     bool playing = false;
-    if (spotify_client_is_playing(&playing) == ESP_OK && playing) {
-        printf("Already playing.\n");
+    if (spotify_client_is_playing(&playing) != ESP_OK) {
+        printf("Failed to get playback state.\n");
         return;
     }
-    const char *id = spotify_device_get_id();
-    int st = 0;
-    spotify_client_play(id, NULL, &st);
-    printf("Play: HTTP %d\n", st);
-}
 
-static void cmd_pause(void)
-{
-    const char *id = spotify_device_get_id();
     int st = 0;
-    spotify_client_pause(id, &st);
-    printf("Pause: HTTP %d\n", st);
+    if (playing) {
+        spotify_client_pause(id, &st);
+        printf("Pause: HTTP %d\n", st);
+    } else {
+        spotify_client_play(id, NULL, &st);
+        printf("Play: HTTP %d\n", st);
+    }
 }
 
 static void cmd_next(void)
@@ -145,8 +144,7 @@ static void spotify_task(void *arg)
                 case 's': cmd_state(); break;
                 case 'f': cmd_find(); break;
                 case 't': cmd_transfer(); break;
-                case 'p': cmd_play(); break;
-                case ' ': cmd_pause(); break;
+                case ' ': cmd_toggle(); break;
                 case 'n': cmd_next(); break;
                 case 'b': cmd_previous(); break;
                 case 'h': print_help(); break;
