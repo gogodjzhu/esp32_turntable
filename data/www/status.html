@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ESP32 Turntable Status</title>
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="card">
+<h1>ESP32 Turntable</h1>
+<div id="status"></div>
+<div class="info">
+<p><strong>IP:</strong> <span id="ip"></span></p>
+<p><strong>SSID:</strong> <span id="ssid"></span></p>
+<p><strong>Spotify:</strong> <span id="spotify"></span></p>
+<p><strong>Free Heap:</strong> <span id="heap"></span> bytes</p>
+<p><strong>Uptime:</strong> <span id="uptime"></span> s</p>
+</div>
+<button class="btn-secondary" onclick="location.href='/config'">Configure</button>
+<button class="btn-secondary" onclick="location.href='/reconnect'">Reconnect WiFi</button>
+<button class="btn-danger" onclick="location.href='/reset'">Reset All</button>
+</div>
+<script>
+function poll(){fetch('/api/status').then(r=>r.json()).then(d=>{
+document.getElementById('status').innerHTML=d.mode===0?'<div class="status status-connected">STA Mode</div>':'<div class="status status-ap">AP Mode</div>';
+document.getElementById('ip').textContent=d.ip||'N/A';
+document.getElementById('ssid').textContent=d.ssid||d.ap_ssid||'N/A';
+document.getElementById('spotify').textContent=d.spotify?'Configured':'Not configured';
+document.getElementById('heap').textContent=d.heap;
+document.getElementById('uptime').textContent=d.uptime;
+});}
+poll();setInterval(poll,3000);
+</script>
+</body>
+</html>

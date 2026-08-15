@@ -90,16 +90,26 @@ playlist-read-private
 ## 四、目录结构
 
 ```
-components/
-  spotify_auth/      # OAuth PKCE + token 刷新 + NVS 存储
-  spotify_client/    # Player 端点 HTTPS 封装
-  spotify_device/    # 设备发现与 device_id 缓存
-  ui/                # OLED 显示驱动 + 当前曲目渲染
-  input/             # 按键 GPIO 驱动 + 事件队列
+components/                        # (未使用，采用 PlatformIO lib/ 约定)
+lib/
+  nvs_manager/      # 通用 NVS 读写封装（namespace: app_config）
+  wifi/             # WiFi 连接管理（STA/AP 模式 + NVS 凭证）
+  http_server/      # HTTP 配网页面（WiFi + Spotify 凭证，SPIFFS 静态文件）
+  sntp_sync/        # SNTP 时间同步（HTTPS 证书校验依赖）
+  spotify_auth/     # OAuth token 管理（NVS 存储 + 自动刷新）
+  spotify_client/   # Player 端点 HTTPS 封装（esp_http_client + crt_bundle）
+  spotify_device/   # 设备发现（搜索 Smartphone 类型，缓存 device_id）
 src/
-  main.cpp           # 启动各 task、事件路由
+  main.cpp           # 启动流程 + 串口交互命令
+  Kconfig            # menuconfig 配置（AP SSID/密码/固件版本）
 tools/
-  get_refresh_token.py   # 电脑辅助授权脚本
+  get_refresh_token.py   # 电脑辅助 PKCE 授权脚本
+  verify_playback.py     # 交互式播放控制验证脚本
+data/
+  www/                  # SPIFFS 网页资源（index/status/success/reset.html + styles.css）
+partitions.csv          # nvs(24KB) + phy(4KB) + factory(2MB) + storage(512KB)
+sdkconfig.defaults      # WiFi/SPIFFS/SNTP/mbedTLS 配置
+build_spiffs.py         # PlatformIO 预构建脚本（打包 data/www/ → storage.bin）
 ```
 
 ---
@@ -114,37 +124,37 @@ tools/
 - [x] **注意**：2026 年 2 月起 Dev Mode 应用 refresh_token 7 天过期；长期使用需申请 Extended Quota 或上架 App。实施时再确认当前策略
 
 ### 阶段 1：项目骨架与依赖
-- [ ] 在 `components/` 下创建各组件目录与 `CMakeLists.txt`
-- [ ] 配置 SNTP 同步（`esp_sntp`）
+- [x] 在 `lib/` 下创建各组件目录（PlatformIO 约定，`src/CMakeLists.txt` GLOB_RECURSE）
+- [x] 配置 SNTP 同步（`lib/sntp_sync/`，`esp_sntp` + pool.ntp.org）
+- [x] WiFi 连接逻辑（`lib/wifi/` + `lib/nvs_manager/`，AP 配网 + NVS 存储，参考 esp32-rss-display）
+- [x] HTTP 配网页面（`lib/http_server/` + `data/www/`，WiFi + Spotify 凭证配置）
 - [ ] OLED 驱动集成（确认型号：SSD1306 / SH1106 / 其他，I2C 地址与引脚）
 - [ ] 按键 GPIO 引脚确认与驱动框架
-- [ ] WiFi 连接逻辑（若 main 中已有则复用）
 
 ### 阶段 2：`spotify_auth` 组件（核心）
-- [ ] NVS 读写 `refresh_token` / `client_id`
-- [ ] `spotify_auth_refresh()`：`POST https://accounts.spotify.com/api/token`，解析 access_token + expires_in
-- [ ] `spotify_auth_get_token()`：过期自动刷新，返回有效 token
-- [ ] 启动时 SNTP 同步完成后再初始化 auth
-- [ ] 单元验证：串口打印刷新后的 access_token
+- [x] NVS 读写 `refresh_token` / `client_id`（NVS key: `sp_client_id` / `sp_refresh_tok`，≤15 字符限制）
+- [x] `spotify_auth_refresh()`：`POST https://accounts.spotify.com/api/token`，解析 access_token + expires_in
+- [x] `spotify_auth_get_token()`：过期自动刷新，返回有效 token
+- [x] 启动时 SNTP 同步完成后再初始化 auth
+- [x] 单元验证：串口打印 `Token refreshed: len=264, expires_in=3600s`
 
 ### 阶段 3：`spotify_client` 组件
-- [ ] 统一 HTTPS 客户端封装（`esp_http_client`，固定 DigiCert Global Root CA）
-- [ ] 统一鉴权头 `Authorization: Bearer <token>`
-- [ ] 429 限流处理（读 `Retry-After`，延迟重试）
-- [ ] `spotify_get_devices(device_list_t *out)`
-- [ ] `spotify_transfer_playback(device_id, play)`
-- [ ] `spotify_play(device_id, context_uri)`
-- [ ] `spotify_pause(device_id)`
-- [ ] `spotify_next(device_id)` / `spotify_previous(device_id)`
-- [ ] `spotify_set_volume(device_id, percent)`
-- [ ] `spotify_get_state(playback_state_t *out)`
-- [ ] 单元验证：串口打印设备列表与当前播放状态
+- [x] 统一 HTTPS 客户端封装（`esp_http_client` + `esp_crt_bundle_attach` 证书 bundle）
+- [x] 统一鉴权头 `Authorization: Bearer <token>`
+- [ ] 429 限流处理（读 `Retry-After`，延迟重试）— 暂未实现
+- [x] `spotify_client_get_devices(buf, size, &status)`
+- [x] `spotify_client_transfer_playback(device_id, play, &status)`
+- [x] `spotify_client_play(device_id, context_uri, &status)` / `spotify_client_play_track(device_id, track_uri, &status)`
+- [x] `spotify_client_pause(device_id, &status)`
+- [x] `spotify_client_next(device_id, &status)` / `spotify_client_previous(device_id, &status)`
+- [x] `spotify_client_get_state(buf, size, &status)`
+- [x] 单元验证：串口打印设备列表与当前播放状态
 
 ### 阶段 4：`spotify_device` 组件
-- [ ] `spotify_device_find_iphone()`：按 `type=="smartphone"` 或设备名匹配
-- [ ] device_id 缓存 + 失效重查策略
-- [ ] `is_restricted==true` 兜底处理
-- [ ] 控制前探测设备在线（get_state 或 get_devices）
+- [x] `spotify_device_find()`：搜索 `"Smartphone"` 并向前提取 `"id"`（兼容 JSON 空格）
+- [x] device_id 缓存 + `spotify_device_invalidate()` 失效重查
+- [ ] `is_restricted==true` 兜底处理 — 暂未实现
+- [x] 控制前自动发现设备（`spotify_device_get_id()` 自动调用 find）
 
 ### 阶段 5：`ui` + `input` 组件
 - [ ] **input**：GPIO + 消抖 + 事件 queue
@@ -164,8 +174,9 @@ tools/
 - [ ] **ui**：设备离线/错误状态提示
 
 ### 阶段 6：`main.cpp` 任务编排
-- [ ] 启动序列：NVS → WiFi → SNTP → auth init
-- [ ] 创建 input_task / control_task / state_task / ui_task
+- [x] 启动序列：NVS → WiFi → SNTP → auth init
+- [x] 串口交互命令（`d/s/f/t/p/SPC/n/b/h`，非阻塞 `getchar` + `vTaskDelay`）
+- [ ] 创建 input_task / control_task / state_task / ui_task（待阶段 5 硬件就绪）
 - [ ] 事件路由：input 事件 → control 动作
 - [ ] state_task 定时拉状态推 UI
 
@@ -177,12 +188,12 @@ tools/
   - 回调拿 code → `POST /api/token` 换 token
   - 打印 refresh_token 供写入 ESP32
 - [x] `tools/verify_playback.py`（交互式验证脚本）
-- [ ] 文档说明如何把 refresh_token 写入 NVS（menuconfig 或 esptool/nvs 工具）
+- [x] ESP32 Web 配置页面写入 NVS（`POST /api/spotify` → NVS → 重启）
 
 ### 阶段 8：增量联调（建议顺序）
 - [x] 8.1 用 Python + refresh_token 验证 API 能控制 iPhone（脱离 ESP32）— **见第十节验证结果**
-- [ ] 8.2 ESP32 串口打印 `get_devices` 结果
-- [ ] 8.3 ESP32 `transfer_playback` + `play/pause`，按键触发验证
+- [x] 8.2 ESP32 串口打印 `get_devices` 结果 — **HTTP 200，iPhone 可见**
+- [x] 8.3 ESP32 `transfer_playback` + `play/pause`，串口命令触发验证 — **全部 HTTP 200/204**
 - [ ] 8.4 OLED 状态显示
 - [ ] 8.5 预设歌单播放（长按切换）
 - [ ] 8.6 长时间稳定性测试（token 自动刷新、设备掉线恢复）
@@ -217,6 +228,12 @@ tools/
 - 保持 App 在后台运行（不手动强制退出）即可被 API 唤醒控制。
 - UI 需提示"设备离线"状态。
 
+### 实现中发现的 bug 与修复（2026-08-15）
+1. **NVS key 长度限制**：`"sp_refresh_token"`（16 字符）超过 NVS 15 字符上限，写入静默失败。改为 `"sp_refresh_tok"`（14 字符）。
+2. **JSON 空格兼容**：Spotify API 返回的 JSON 在冒号两侧有空格（`"type" : "Smartphone"`），设备发现搜索 `"type":"Smartphone"` 匹配不到。改为直接搜索 `"Smartphone"` 并向前提取 `"id"` 值，跳过空格/冒号。
+3. **看门狗超时**：`getchar()` 阻塞导致 IDLE 任务饿死。用 `fcntl(O_NONBLOCK)` 设非阻塞 + `vTaskDelay(50ms)` 让出 CPU。
+4. **esp_http_client content_type**：ESP-IDF 6.0 的 `esp_http_client_config_t` 无 `content_type` 字段，需在 init 后用 `esp_http_client_set_header()` 设置。
+
 ---
 
 ## 七、风险与对策
@@ -237,7 +254,7 @@ tools/
 
 - [ ] OLED 具体型号（SSD1306 / SH1106 / 其他）与 I2C 引脚/地址
 - [ ] 按键 GPIO 引脚分配
-- [ ] WiFi 连接是否已有现成代码（SSID/密码配置方式）
+- [x] ~~WiFi 连接是否已有现成代码~~ — 已实现：AP 配网 + NVS 存储（参考 esp32-rss-display）
 - [x] 预设歌单列表（URI 或名称）— 已在第十节列出
 - [x] ~~是否需要旋钮（旋转编码器）用于音量~~ — 不需要，iPhone 不支持 API 音量控制
 
@@ -316,3 +333,4 @@ iPhone Spotify App 的设备属性返回 `supports_volume: false`，调用 `PUT 
 |------|------|
 | 2026-08-15 | 初版方案，确认 Premium + 基础控制 + 播放指定内容 + 状态显示 + 电脑辅助授权 + 按键+OLED |
 | 2026-08-15 | 完成 API 验证：转移/播放/暂停/上下首/状态均通过；发现 iPhone 不支持 API 音量控制（supports_volume=false），方案移除音量功能 |
+| 2026-08-15 | 完成 ESP32 固件阶段 1-4/6/7/8.1-8.3：WiFi 配网(NVS+AP)、SNTP 同步、Spotify auth(client_id+refresh_token→NVS)、HTTPS Player 端点封装、设备发现、串口交互命令。全链路验证通过（发现 iPhone→转移→播放→暂停） |

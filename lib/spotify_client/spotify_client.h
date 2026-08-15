@@ -1,0 +1,59 @@
+#ifndef SPOTIFY_CLIENT_H
+#define SPOTIFY_CLIENT_H
+
+#include <esp_err.h>
+#include <stddef.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/**
+ * @brief Get list of available devices.
+ * @param buf Output buffer for JSON response
+ * @param buf_size Buffer size
+ * @param status_code Output HTTP status code (can be NULL)
+ * @return ESP_OK on success
+ */
+esp_err_t spotify_client_get_devices(char *buf, size_t buf_size, int *status_code);
+
+/**
+ * @brief Get current playback state.
+ */
+esp_err_t spotify_client_get_state(char *buf, size_t buf_size, int *status_code);
+
+/**
+ * @brief Transfer playback to a device.
+ */
+esp_err_t spotify_client_transfer_playback(const char *device_id, bool play, int *status_code);
+
+/**
+ * @brief Start/Resume playback. If context_uri is NULL, just resume.
+ */
+esp_err_t spotify_client_play(const char *device_id, const char *context_uri, int *status_code);
+
+/**
+ * @brief Play a specific track.
+ */
+esp_err_t spotify_client_play_track(const char *device_id, const char *track_uri, int *status_code);
+
+/**
+ * @brief Pause playback.
+ */
+esp_err_t spotify_client_pause(const char *device_id, int *status_code);
+
+/**
+ * @brief Skip to next track.
+ */
+esp_err_t spotify_client_next(const char *device_id, int *status_code);
+
+/**
+ * @brief Skip to previous track.
+ */
+esp_err_t spotify_client_previous(const char *device_id, int *status_code);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif

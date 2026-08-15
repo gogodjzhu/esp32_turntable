@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ESP32 Turntable Config</title>
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="card">
+<h1>ESP32 Turntable</h1>
+
+<h2>WiFi Configuration</h2>
+<form method="POST" action="/save">
+<label>SSID (WiFi Name)</label>
+<input type="text" name="ssid" required placeholder="Enter WiFi SSID">
+<label>Password</label>
+<input type="password" name="password" placeholder="Enter WiFi Password">
+<button type="submit">Save & Connect</button>
+</form>
+
+<hr>
+
+<h2>Spotify Configuration</h2>
+<p class="meta">Run <code>python3 tools/get_refresh_token.py &lt;CLIENT_ID&gt;</code> on your computer to get the refresh token, then paste it here.</p>
+<form id="spotify-form">
+<label>Client ID</label>
+<input type="text" id="client_id" placeholder="Spotify App Client ID">
+<label>Refresh Token</label>
+<input type="text" id="refresh_token" placeholder="Paste refresh token here">
+<button type="submit">Save Spotify Config</button>
+</form>
+<div id="spotify-result"></div>
+
+</div>
+<script>
+fetch('/api/spotify').then(r=>r.json()).then(d=>{
+if(d.client_id)document.getElementById('client_id').value=d.client_id;
+if(d.has_refresh_token)document.getElementById('spotify-result').innerHTML='<p class="status status-connected">Spotify token configured</p>';
+});
+document.getElementById('spotify-form').addEventListener('submit',e=>{
+e.preventDefault();
+fetch('/api/spotify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({client_id:document.getElementById('client_id').value,refresh_token:document.getElementById('refresh_token').value})}).then(r=>r.json()).then(d=>{document.getElementById('spotify-result').innerHTML='<p class="status status-connected">Saved! Rebooting...</p>';}).catch(()=>{document.getElementById('spotify-result').innerHTML='<p class="status status-disconnected">Error saving</p>';});
+});
+</script>
+</body>
+</html>
