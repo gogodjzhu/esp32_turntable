@@ -1,2 +1,6 @@
 .pio/
 .vscode/
+
+# Spotify tokens (secrets - never commit)
+tools/.spotify_token.json
+tools/.spotify_client.json
