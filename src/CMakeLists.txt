@@ -4,6 +4,10 @@ FILE(GLOB_RECURSE app_sources
     ${CMAKE_SOURCE_DIR}/lib/*/*.*
 )
 
+# LVGL core sources
+set(LVGL_DIR "${CMAKE_SOURCE_DIR}/.pio/libdeps/airm2m_core_esp32c3/lvgl")
+FILE(GLOB_RECURSE lvgl_sources ${LVGL_DIR}/src/*.c)
+
 # Collect lib include directories
 FILE(GLOB lib_subdirs LIST_DIRECTORIES true ${CMAKE_SOURCE_DIR}/lib/*)
 set(lib_include_dirs "")
@@ -13,8 +17,10 @@ foreach(dir ${lib_subdirs})
     endif()
 endforeach()
 
-idf_component_register(SRCS ${app_sources}
+idf_component_register(SRCS ${app_sources} ${lvgl_sources}
                        INCLUDE_DIRS
                            ${CMAKE_SOURCE_DIR}/src
                            ${lib_include_dirs}
+                           ${LVGL_DIR}
+                           ${LVGL_DIR}/src
                        REQUIRES spiffs esp_timer log)

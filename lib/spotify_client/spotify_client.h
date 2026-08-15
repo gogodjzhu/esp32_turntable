@@ -3,10 +3,24 @@
 
 #include <esp_err.h>
 #include <stddef.h>
+#include <stdbool.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/**
+ * @brief 解析后的播放状态结构体。
+ */
+typedef struct {
+    char title[128];      /**< 曲目名 */
+    char artist[128];     /**< 艺术家 */
+    bool is_playing;      /**< 是否播放中 */
+    bool has_track;       /**< 是否有当前曲目（item 非 null） */
+    uint32_t progress_ms; /**< 当前进度（毫秒） */
+    uint32_t duration_ms; /**< 总时长（毫秒） */
+} spotify_playback_t;
 
 /**
  * @brief Get list of available devices.
@@ -27,6 +41,12 @@ esp_err_t spotify_client_get_state(char *buf, size_t buf_size, int *status_code)
  * @param is_playing Output: true if playing, false if paused/stopped
  */
 esp_err_t spotify_client_is_playing(bool *is_playing);
+
+/**
+ * @brief 获取当前播放状态并解析到结构体。
+ * @param out 输出结构体
+ */
+esp_err_t spotify_client_get_playback(spotify_playback_t *out);
 
 /**
  * @brief Transfer playback to a device.

@@ -2,6 +2,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nvs_manager.h"
@@ -11,8 +12,12 @@
 #include "spotify_auth.h"
 #include "spotify_client.h"
 #include "spotify_device.h"
+#include "ui.h"
+#include "input.h"
 
 static const char *TAG = "main";
+
+#define DISPLAY_REFRESH_MS 2000
 
 static void print_help(void)
 {
@@ -25,7 +30,9 @@ static void print_help(void)
     printf("  SPC- Play / Pause (toggle)\n");
     printf("  n  - Next track\n");
     printf("  b  - Previous track\n");
-    printf("  h  - Help\n\n");
+    printf("  h  - Help\n");
+    printf("Button (GPIO9):\n");
+    printf("  short = toggle,  double = next,  triple = previous\n\n");
 }
 
 static void cmd_devices(void)
@@ -103,19 +110,48 @@ static void cmd_previous(void)
     printf("Previous: HTTP %d\n", st);
 }
 
+static void refresh_display(void)
+{
+    const char *id = spotify_device_get_id();
+    if (!id) {
+        ui_show_status("No device.\nOpen Spotify app on iPhone.");
+        return;
+    }
+
+    spotify_playback_t pb;
+    if (spotify_client_get_playback(&pb) != ESP_OK) {
+        ui_show_status("Failed to get playback state.");
+        return;
+    }
+
+    if (!pb.has_track) {
+        ui_show_status("No track playing.");
+        return;
+    }
+
+    ui_show_track(pb.title, pb.artist, "", pb.progress_ms, pb.duration_ms, pb.is_playing);
+}
+
 static void spotify_task(void *arg)
 {
+    ui_show_status("Connecting WiFi...");
     while (wifi_manager_get_info()->status != WIFI_STATUS_CONNECTED) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        ui_task();
+        vTaskDelay(pdMS_TO_TICKS(500));
     }
     ESP_LOGI(TAG, "WiFi connected, starting Spotify...");
 
+    ui_show_status("Syncing time...");
     if (sntp_sync_init(15000) != ESP_OK) {
         ESP_LOGW(TAG, "SNTP sync timeout, HTTPS may fail");
     }
 
     if (!spotify_auth_is_configured()) {
         ESP_LOGW(TAG, "Spotify not configured!");
+        char msg[96];
+        snprintf(msg, sizeof(msg), "Spotify not configured.\nOpen http://%s", wifi_manager_get_info()->ip);
+        ui_show_status(msg);
+        ui_task();
         printf("Open http://%s to configure Spotify credentials.\n",
                wifi_manager_get_info()->ip);
         vTaskDelete(NULL);
@@ -123,6 +159,8 @@ static void spotify_task(void *arg)
 
     if (spotify_auth_init() != ESP_OK) {
         ESP_LOGE(TAG, "Spotify auth init failed");
+        ui_show_status("Spotify auth init failed.");
+        ui_task();
         vTaskDelete(NULL);
     }
 
@@ -132,9 +170,14 @@ static void spotify_task(void *arg)
     cmd_state();
     print_help();
 
+    /* 初始化按钮 (GPIO9) */
+    input_init();
+
     /* Set stdin non-blocking so we can yield to IDLE task */
     int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
     fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
+
+    uint32_t last_refresh_ms = 0;
 
     while (true) {
         int c = getchar();
@@ -151,6 +194,22 @@ static void spotify_task(void *arg)
                 default: break;
             }
         }
+
+        /* 按钮手势：短按=播放/暂停, 双击=下一首, 三击=上一首 */
+        input_event_t ev = input_poll();
+        switch (ev) {
+            case INPUT_SHORT_PRESS:  cmd_toggle(); break;
+            case INPUT_DOUBLE_PRESS: cmd_next(); break;
+            case INPUT_TRIPLE_PRESS: cmd_previous(); break;
+            default: break;
+        }
+
+        uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000ULL);
+        if (now_ms - last_refresh_ms >= DISPLAY_REFRESH_MS) {
+            last_refresh_ms = now_ms;
+            refresh_display();
+        }
+        ui_task();
         vTaskDelay(pdMS_TO_TICKS(50));
     }
 }
@@ -159,15 +218,24 @@ extern "C" void app_main(void)
 {
     ESP_LOGI(TAG, "ESP32 Turntable starting...");
 
+    ui_init();
+    ui_show_status("Booting...");
+    ui_task();
+
     wifi_manager_init();
     esp_err_t ret = wifi_manager_smart_connect();
 
     if (ret != ESP_OK) {
         ESP_LOGI(TAG, "AP config mode: connect to '%s' and open http://192.168.4.1",
                  wifi_manager_get_info()->ap_ssid);
+        char msg[96];
+        snprintf(msg, sizeof(msg), "Config mode.\nConnect WiFi '%s' then open\nhttp://192.168.4.1",
+                 wifi_manager_get_info()->ap_ssid);
+        ui_show_status(msg);
         http_server_start();
         while (true) {
-            vTaskDelay(pdMS_TO_TICKS(1000));
+            ui_task();
+            vTaskDelay(pdMS_TO_TICKS(100));
         }
     }
 

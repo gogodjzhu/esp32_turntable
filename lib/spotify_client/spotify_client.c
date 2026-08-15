@@ -130,6 +130,115 @@ esp_err_t spotify_client_is_playing(bool *is_playing)
     return ESP_OK;
 }
 
+/* ---------- 播放状态 JSON 解析辅助 ---------- */
+
+static const char *json_find_key(const char *json, const char *key)
+{
+    char search[64];
+    snprintf(search, sizeof(search), "\"%s\"", key);
+    const char *p = strstr(json, search);
+    return p ? p + strlen(search) : NULL;
+}
+
+static const char *json_skip_to_value(const char *p)
+{
+    while (*p == ' ' || *p == '\t' || *p == '\n') p++;
+    if (*p == ':') p++;
+    while (*p == ' ' || *p == '\t' || *p == '\n') p++;
+    return p;
+}
+
+static int json_parse_string(const char *value, char *out, size_t size)
+{
+    if (*value != '"') return -1;
+    value++;
+    const char *end = strchr(value, '"');
+    if (!end) return -1;
+    size_t len = end - value;
+    if (len >= size) len = size - 1;
+    memcpy(out, value, len);
+    out[len] = '\0';
+    return 0;
+}
+
+static uint32_t json_parse_int(const char *value)
+{
+    return (uint32_t)atoi(value);
+}
+
+esp_err_t spotify_client_get_playback(spotify_playback_t *out)
+{
+    char buf[2048];
+    int status = 0;
+
+    memset(out, 0, sizeof(*out));
+
+    esp_err_t err = spotify_client_get_state(buf, sizeof(buf), &status);
+    if (err != ESP_OK) return err;
+    if (status == 204) {
+        out->is_playing = false;
+        out->has_track = false;
+        return ESP_OK;
+    }
+    if (status != 200) return ESP_FAIL;
+
+    /* is_playing */
+    const char *p = json_find_key(buf, "is_playing");
+    if (p) {
+        p = json_skip_to_value(p);
+        out->is_playing = (strncmp(p, "true", 4) == 0);
+    }
+
+    /* progress_ms */
+    p = json_find_key(buf, "progress_ms");
+    if (p) out->progress_ms = json_parse_int(json_skip_to_value(p));
+
+    /* duration_ms（仅 item 内有一处） */
+    p = json_find_key(buf, "duration_ms");
+    if (p) out->duration_ms = json_parse_int(json_skip_to_value(p));
+
+    /* item 是否为 null */
+    p = json_find_key(buf, "item");
+    if (p) {
+        const char *v = json_skip_to_value(p);
+        out->has_track = (*v != 'n');  /* 'null' 开头则为 false */
+    } else {
+        out->has_track = false;
+    }
+
+    if (!out->has_track) {
+        return ESP_OK;
+    }
+
+    /* 曲目名 = 整个响应中最后一个 "name":"（item.name 位于末尾） */
+    const char *search = buf;
+    const char *last_name = NULL;
+    while ((search = strstr(search, "\"name\""))) {
+        const char *after = json_skip_to_value(search + strlen("\"name\""));
+        if (*after == '"') last_name = after;
+        search += strlen("\"name\"");
+    }
+    if (last_name) json_parse_string(last_name, out->title, sizeof(out->title));
+
+    /* 艺术家 = 最后一个 "artists" 数组中的第一个 "name":" */
+    const char *artists = buf;
+    const char *last_artists = NULL;
+    while ((artists = strstr(artists, "\"artists\""))) {
+        last_artists = artists;
+        artists += strlen("\"artists\"");
+    }
+    if (last_artists) {
+        const char *a = json_skip_to_value(last_artists + strlen("\"artists\""));
+        const char *np = strstr(a, "\"name\"");
+        if (np) {
+            const char *nv = json_skip_to_value(np + strlen("\"name\""));
+            if (*nv == '"') json_parse_string(nv, out->artist, sizeof(out->artist));
+        }
+    }
+
+    return ESP_OK;
+}
+
 esp_err_t spotify_client_transfer_playback(const char *device_id, bool play, int *status_code)
 {
     char body[128];
