@@ -31,7 +31,7 @@ static void print_help(void)
     printf("  n  - Next track\n");
     printf("  b  - Previous track\n");
     printf("  h  - Help\n");
-    printf("Button (GPIO9):\n");
+    printf("Button (GPIO2):\n");
     printf("  short = toggle,  double = next,  triple = previous\n\n");
 }
 

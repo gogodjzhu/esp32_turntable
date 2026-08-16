@@ -13,7 +13,7 @@ typedef enum {
 } input_event_t;
 
 /**
- * @brief 初始化按钮 (GPIO9, 内部上拉, 下降沿中断)。
+ * @brief 初始化按钮 (GPIO2, 内部上拉, 下降沿中断)。
  * 需要在启动时调用一次。
  */
 void input_init(void);

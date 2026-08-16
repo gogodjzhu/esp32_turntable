@@ -8,7 +8,7 @@
 
 static const char *TAG = "INPUT";
 
-#define BTN_GPIO           GPIO_NUM_9
+#define BTN_GPIO           GPIO_NUM_2
 #define BTN_DEBOUNCE_US    50000LL    /* 50ms 防抖 */
 #define GESTURE_TIMEOUT_MS 350        /* 最后一次点击后等待判定手势 */
 
@@ -55,7 +55,7 @@ void input_init(void)
     gpio_isr_handler_add(BTN_GPIO, gpio_button_isr, NULL);
 
     s_click_count = 0;
-    ESP_LOGI(TAG, "Button GPIO9 initialized");
+    ESP_LOGI(TAG, "Button GPIO2 initialized");
 }
 
 input_event_t input_poll(void)
@@ -71,6 +71,7 @@ input_event_t input_poll(void)
     if (pressed) {
         s_click_count++;
         s_last_click_ms = esp_timer_get_time() / 1000;
+        ESP_LOGI(TAG, "Button press #%d", s_click_count);
     }
 
     if (s_click_count > 0) {
@@ -82,6 +83,7 @@ input_event_t input_poll(void)
                 case 2:  ev = INPUT_DOUBLE_PRESS; break;
                 default: ev = INPUT_TRIPLE_PRESS; break;  /* >=3 视为三击 */
             }
+            ESP_LOGI(TAG, "Gesture detected: %d click(s) -> event=%d", s_click_count, (int)ev);
             s_click_count = 0;
             return ev;
         }
